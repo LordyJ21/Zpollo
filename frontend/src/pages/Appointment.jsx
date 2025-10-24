@@ -16,6 +16,7 @@ const Appointment = () => {
     const [docSlots, setDocSlots] = useState([])
     const [slotIndex, setSlotIndex] = useState(0)
     const [slotTime, setSlotTime] = useState('')
+    const [description, setDescription] = useState('')
 
     const navigate = useNavigate()
 
@@ -55,7 +56,9 @@ const Appointment = () => {
 
 
             while (currentDate < endTime) {
-                let formattedTime = currentDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                let hours = currentDate.getHours().toString().padStart(2, '0');
+                let minutes = currentDate.getMinutes().toString().padStart(2, '0');
+                let formattedTime = `${hours}:${minutes}`;
 
                 let day = currentDate.getDate()
                 let month = currentDate.getMonth() + 1
@@ -92,6 +95,11 @@ const Appointment = () => {
             return navigate('/login')
         }
 
+        if (!slotTime) {
+            toast.error('Please select a time slot')
+            return
+        }
+
         const date = docSlots[slotIndex][0].datetime
 
         let day = date.getDate()
@@ -102,7 +110,7 @@ const Appointment = () => {
 
         try {
 
-            const { data } = await axios.post(backendUrl + '/api/user/book-appointment', { docId, slotDate, slotTime }, { headers: { token } })
+            const { data } = await axios.post(backendUrl + '/api/user/book-appointment', { docId, slotDate, slotTime, description }, { headers: { token } })
             if (data.success) {
                 toast.success(data.message)
                 getDoctosData()
@@ -177,7 +185,18 @@ const Appointment = () => {
                     ))}
                 </div>
 
-                <button onClick={bookAppointment} className='bg-primary text-white text-sm font-light px-20 py-3 rounded-full my-6'>Book an appointment</button>
+                <div className='mt-4'>
+                    <p className='mb-2'>Purpose of Visit (Optional)</p>
+                    <textarea
+                        className='w-full border border-gray-300 rounded p-2'
+                        rows={3}
+                        placeholder='Describe the purpose of your visit...'
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                    />
+                </div>
+
+                <button onClick={bookAppointment} disabled={!slotTime} className={`text-sm font-light px-20 py-3 rounded-full my-6 ${!slotTime ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary text-white cursor-pointer'}`}>Book an appointment</button>
             </div>
 
             {/* Listing Releated Doctors */}

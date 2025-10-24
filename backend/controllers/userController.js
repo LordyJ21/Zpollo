@@ -4,9 +4,12 @@ import validator from "validator";
 import userModel from "../models/userModel.js";
 import doctorModel from "../models/doctorModel.js";
 import appointmentModel from "../models/appointmentModel.js";
+import notificationModel from "../models/notificationModel.js";
 import { v2 as cloudinary } from "cloudinary";
 import Stripe from "stripe";
 import Razorpay from "razorpay";
+import { notifyDoctorOfBooking, notifyDoctorOfPatientCancel } from "../utils/sendEmail.js";
+import { createCalendarEvent, deleteCalendarEvent } from "../utils/googleCalendar.js";
 
 // ------------------ Payment Gateway Initialize ------------------ //
 let stripeInstance = null;
@@ -134,7 +137,7 @@ const updateProfile = async (req, res) => {
 // Book Appointment
 const bookAppointment = async (req, res) => {
   try {
-    const { userId, docId, slotDate, slotTime } = req.body;
+    const { userId, docId, slotDate, slotTime, description } = req.body;
     const docData = await doctorModel.findById(docId).select("-password");
 
     if (!docData.available) {
@@ -164,12 +167,44 @@ const bookAppointment = async (req, res) => {
       slotTime,
       slotDate,
       date: Date.now(),
+      description: description || ''
     };
 
     const newAppointment = new appointmentModel(appointmentData);
     await newAppointment.save();
 
     await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+
+    // Validate and parse date
+    const [day, month, year] = slotDate.split('_');
+    const dateStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const startDateTimeObj = new Date(`${dateStr}T${slotTime}`);
+    if (isNaN(startDateTimeObj.getTime())) {
+      return res.json({ success: false, message: "Invalid time slot" });
+    }
+    const startDateTime = startDateTimeObj.toISOString();
+    const endDateTime = new Date(startDateTimeObj.getTime() + 60 * 60 * 1000).toISOString(); // 1 hour appointment
+
+    const eventId = await createCalendarEvent(userId, {
+      summary: `Appointment with Dr. ${docData.name}`,
+      description: `Medical appointment. ${description || ''}`,
+      startDateTime,
+      endDateTime,
+    });
+
+    if (eventId) {
+      await appointmentModel.findByIdAndUpdate(newAppointment._id, { calendarEventId: eventId });
+    }
+
+    // Notify doctor of new booking
+    await notifyDoctorOfBooking(docData.email, userData.name, slotDate, slotTime, description);
+
+    // Create notification for doctor
+    await notificationModel.create({
+      userId: docId,
+      message: `New appointment booked by ${userData.name} on ${slotDate} at ${slotTime}.`,
+      type: 'booking'
+    });
 
     res.json({ success: true, message: "Appointment Booked" });
   } catch (error) {
@@ -197,6 +232,21 @@ const cancelAppointment = async (req, res) => {
     slots_booked[slotDate] = slots_booked[slotDate].filter((e) => e !== slotTime);
 
     await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+
+    // Delete Google Calendar event if it exists
+    if (appointmentData.calendarEventId) {
+      await deleteCalendarEvent(userId, appointmentData.calendarEventId);
+    }
+
+    // Notify doctor of patient cancellation
+    await notifyDoctorOfPatientCancel(appointmentData.docData.email, appointmentData.userData.name, appointmentData.slotDate, appointmentData.slotTime);
+
+    // Create notification for doctor
+    await notificationModel.create({
+      userId: docId,
+      message: `Appointment cancelled by ${appointmentData.userData.name} on ${appointmentData.slotDate} at ${appointmentData.slotTime}.`,
+      type: 'cancellation'
+    });
 
     res.json({ success: true, message: "Appointment Cancelled" });
   } catch (error) {
@@ -344,6 +394,36 @@ const verifyStripe = async (req, res) => {
   }
 };
 
+// Get User Notifications
+const getNotifications = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const notifications = await notificationModel.find({ userId }).sort({ date: -1 });
+    res.json({ success: true, notifications });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// ------------------ Google OAuth ------------------ //
+const googleLoginSuccess = async (req, res) => {
+  try {
+    const user = req.user; // Passport already sets req.user to the DB user
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+
+    // Redirect to frontend with token
+    const redirectUrl = `${process.env.FRONTEND_URL}/auth-success?token=${token}`;
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.log(error);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=GoogleLoginFailed`);
+  }
+};
+
+
 export {
   loginUser,
   registerUser,
@@ -356,4 +436,7 @@ export {
   verifyRazorpay,
   paymentStripe,
   verifyStripe,
+  getNotifications,
+  googleLoginSuccess,   
 };
+

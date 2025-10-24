@@ -13,6 +13,7 @@ import Footer from './components/Footer'
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Verify from './pages/Verify'
+import AuthSuccess from './pages/AuthSuccess'
 
 const App = () => {
   return (
@@ -24,6 +25,7 @@ const App = () => {
         <Route path='/doctors' element={<Doctors />} />
         <Route path='/doctors/:speciality' element={<Doctors />} />
         <Route path='/login' element={<Login />} />
+        <Route path='/auth-success' element={<AuthSuccess />} />
         <Route path='/about' element={<About />} />
         <Route path='/contact' element={<Contact />} />
         <Route path='/appointment/:docId' element={<Appointment />} />
@@ -32,7 +34,7 @@ const App = () => {
         <Route path='/verify' element={<Verify />} />
       </Routes>
       <Footer />
-    </div> 
+    </div>
   )
 }
 

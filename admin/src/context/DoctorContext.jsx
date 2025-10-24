@@ -1,4 +1,4 @@
-import { createContext, useState } from "react";
+import { createContext, useState, useEffect } from "react";
 import axios from 'axios'
 import { toast } from 'react-toastify'
 
@@ -13,6 +13,7 @@ const DoctorContextProvider = (props) => {
     const [appointments, setAppointments] = useState([])
     const [dashData, setDashData] = useState(false)
     const [profileData, setProfileData] = useState(false)
+    const [notifications, setNotifications] = useState([])
 
     // Getting Doctor appointment data from Database using API
     const getAppointments = async () => {
@@ -111,6 +112,34 @@ const DoctorContextProvider = (props) => {
 
     }
 
+    // Getting Doctor notifications using API
+    const getNotifications = async () => {
+        try {
+
+            const { data } = await axios.post(backendUrl + '/api/doctor/get-notifications', { docId: profileData._id }, { headers: { dToken } })
+
+            if (data.success) {
+                setNotifications(data.notifications)
+                // Show toast for unread notifications
+                const unread = data.notifications.filter(n => !n.isRead)
+                unread.forEach(n => toast.info(n.message))
+            } else {
+                toast.error(data.message)
+            }
+
+        } catch (error) {
+            console.log(error)
+            toast.error(error.message)
+        }
+
+    }
+
+    useEffect(() => {
+        if (profileData) {
+            getNotifications()
+        }
+    }, [profileData])
+
     const value = {
         dToken, setDToken, backendUrl,
         appointments,
@@ -120,6 +149,7 @@ const DoctorContextProvider = (props) => {
         dashData, getDashData,
         profileData, setProfileData,
         getProfileData,
+        notifications, getNotifications
     }
 
     return (

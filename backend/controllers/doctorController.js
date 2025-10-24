@@ -3,6 +3,9 @@ import bcrypt from "bcryptjs";
 import validator from "validator";
 import doctorModel from "../models/doctorModel.js";
 import appointmentModel from "../models/appointmentModel.js";
+import notificationModel from "../models/notificationModel.js";
+import { notifyPatientOfConfirmation, notifyPatientOfDoctorCancel } from "../utils/sendEmail.js";
+import { updateCalendarEvent, deleteCalendarEvent } from "../utils/googleCalendar.js";
 
 // ============================
 // Doctor Login
@@ -109,6 +112,22 @@ const appointmentCancel = async (req, res) => {
         const appointmentData = await appointmentModel.findById(appointmentId);
         if (appointmentData && appointmentData.docId === docId) {
             await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true });
+
+            // Delete Google Calendar event if it exists
+            if (appointmentData.calendarEventId) {
+              await deleteCalendarEvent(appointmentData.userId, appointmentData.calendarEventId);
+            }
+
+            // Notify patient of doctor cancellation
+            await notifyPatientOfDoctorCancel(appointmentData.userData.email, appointmentData.docData.name, appointmentData.slotDate, appointmentData.slotTime);
+
+            // Create notification for patient
+            await notificationModel.create({
+              userId: appointmentData.userId,
+              message: `Your appointment with Dr. ${appointmentData.docData.name} on ${appointmentData.slotDate} at ${appointmentData.slotTime} has been cancelled by the doctor.`,
+              type: 'doctor_cancel'
+            });
+
             return res.json({ success: true, message: "Appointment Cancelled" });
         }
 
@@ -129,6 +148,37 @@ const appointmentComplete = async (req, res) => {
         const appointmentData = await appointmentModel.findById(appointmentId);
         if (appointmentData && appointmentData.docId === docId) {
             await appointmentModel.findByIdAndUpdate(appointmentId, { isCompleted: true });
+
+            // Update Google Calendar event if it exists
+            if (appointmentData.calendarEventId) {
+              const [day, month, year] = appointmentData.slotDate.split('_');
+              const dateStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+              const startDateTimeObj = new Date(`${dateStr}T${appointmentData.slotTime}`);
+              if (isNaN(startDateTimeObj.getTime())) {
+                console.error('Invalid date/time for calendar update:', appointmentData.slotDate, appointmentData.slotTime);
+              } else {
+                const startDateTime = startDateTimeObj.toISOString();
+                const endDateTime = new Date(startDateTimeObj.getTime() + 60 * 60 * 1000).toISOString(); // 1 hour appointment
+
+                await updateCalendarEvent(appointmentData.userId, appointmentData.calendarEventId, {
+                  summary: `Appointment with Dr. ${appointmentData.docData.name} (Completed)`,
+                  description: `Medical appointment. Completed. ${appointmentData.description || ''}`,
+                  startDateTime,
+                  endDateTime,
+                });
+              }
+            }
+
+            // Notify patient of confirmation
+            await notifyPatientOfConfirmation(appointmentData.userData.email, appointmentData.docData.name, appointmentData.slotDate, appointmentData.slotTime);
+
+            // Create notification for patient
+            await notificationModel.create({
+              userId: appointmentData.userId,
+              message: `Your appointment with Dr. ${appointmentData.docData.name} on ${appointmentData.slotDate} at ${appointmentData.slotTime} has been confirmed/completed.`,
+              type: 'confirmation'
+            });
+
             return res.json({ success: true, message: "Appointment Completed" });
         }
 
@@ -243,6 +293,18 @@ const doctorDashboard = async (req, res) => {
     }
 };
 
+// Get Doctor Notifications
+const getNotifications = async (req, res) => {
+  try {
+    const { docId } = req.body;
+    const notifications = await notificationModel.find({ userId: docId }).sort({ date: -1 });
+    res.json({ success: true, notifications });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
 export {
     loginDoctor,
     addDoctor,
@@ -253,5 +315,6 @@ export {
     changeAvailablity,
     doctorDashboard,
     doctorProfile,
-    updateDoctorProfile
+    updateDoctorProfile,
+    getNotifications
 };

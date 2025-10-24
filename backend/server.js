@@ -6,6 +6,7 @@ import connectCloudinary from "./config/cloudinary.js"
 import userRouter from "./routes/userRoute.js"
 import doctorRouter from "./routes/doctorRoute.js"
 import adminRouter from "./routes/adminRoute.js"
+import passport from "./config/passport.js"
 
 // app config
 const app = express()
@@ -17,6 +18,7 @@ connectCloudinary()
 app.use(express.json())
 app.use(cors())
 app.use('/public', express.static('public'))
+app.use(passport.initialize())
 // api endpoints
 app.use("/api/user", userRouter)
 app.use("/api/admin", adminRouter)

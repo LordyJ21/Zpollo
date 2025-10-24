@@ -12,6 +12,7 @@ const AppContextProvider = (props) => {
     const [doctors, setDoctors] = useState([])
     const [token, setToken] = useState(localStorage.getItem('token') ? localStorage.getItem('token') : '')
     const [userData, setUserData] = useState(false)
+    const [notifications, setNotifications] = useState([])
 
     // Getting Doctors using API
     const getDoctosData = async () => {
@@ -52,6 +53,29 @@ const AppContextProvider = (props) => {
 
     }
 
+    // Getting User Notifications using API
+    const getNotifications = async () => {
+
+        try {
+
+            const { data } = await axios.post(backendUrl + '/api/user/get-notifications', { userId: userData._id }, { headers: { token } })
+
+            if (data.success) {
+                setNotifications(data.notifications)
+                // Show toast for unread notifications
+                const unread = data.notifications.filter(n => !n.isRead)
+                unread.forEach(n => toast.info(n.message))
+            } else {
+                toast.error(data.message)
+            }
+
+        } catch (error) {
+            console.log(error)
+            toast.error(error.message)
+        }
+
+    }
+
     useEffect(() => {
         getDoctosData()
     }, [])
@@ -62,12 +86,19 @@ const AppContextProvider = (props) => {
         }
     }, [token])
 
+    useEffect(() => {
+        if (userData) {
+            getNotifications()
+        }
+    }, [userData])
+
     const value = {
         doctors, getDoctosData,
         currencySymbol,
         backendUrl,
         token, setToken,
-        userData, setUserData, loadUserProfileData
+        userData, setUserData, loadUserProfileData,
+        notifications, getNotifications
     }
 
     return (
