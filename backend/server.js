@@ -15,11 +15,18 @@ connectDB()
 connectCloudinary()
 
 // middlewares
-app.use(express.json())
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'https://zpollo-udrf.vercel.app', 'https://zpollo-admin.vercel.app', 'https://zpollo.vercel.app'],
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://zpollo-hu3q.vercel.app',   // ✅ correct frontend domain
+    'https://zpollo-admin.vercel.app',
+    'https://zpollo.vercel.app'
+  ],
   credentials: true
-}))
+}));
+
 app.use('/public', express.static('public'))
 app.use(passport.initialize())
 // api endpoints
